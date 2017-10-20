@@ -10,7 +10,7 @@ $ export IMICROBE_DB_URI=mysql+pymysql://imicrobe:<password>@localhost/imicrobe
 ```
 
 The `pymysql` driver will be installed automatically. Other drivers can be
-installed with `pip' (or 'conda').
+installed with `pip` (or `conda`).
 
 ## Installation
 Use a virtual environment for ultimate happiness.
