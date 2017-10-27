@@ -2,15 +2,10 @@ import argparse
 import collections
 import io
 import os
-import re
+import pprint
 
 import sqlalchemy as sa
 
-
-mysql_to_sqlalchemy = {
-    'INTEGER': 'Integer',
-    'VARCHAR': 'String'
-}
 
 def get_args():
     arg_parser = argparse.ArgumentParser()
@@ -132,11 +127,6 @@ def write_models(output_fp):
         print(table.columns)
 
     # add relationships
-    # look for tables with name like 'table_a_to_table_b'
-    # it would be more smarter to look for tables with two foreign keys
-    relationship_pattern = re.compile(
-        r'^(?P<table_a>[a-zA-Z_]+)_to_(?P<table_b>[a-zA-Z_]+)$'
-    )
     relationship_code = """\
     {table_2}_list = sa.orm.relationship(
         "{class_2}",
@@ -145,33 +135,83 @@ def write_models(output_fp):
     )
 
 """
+    insp = sa.engine.reflection.Inspector.from_engine(imicrobe_engine)
+    for table in meta.sorted_tables:
+        foreign_key_constraints = insp.get_foreign_keys(table.name)
+        """
+        foreign_key_constraints looks like this:
+            foreign keys for table sample_to_ontology:
+            [{'constrained_columns': ['ontology_id'],
+              'name': 'sample_to_ontology_ibfk_2',
+              'options': {},
+              'referred_columns': ['ontology_id'],
+              'referred_schema': None,
+              'referred_table': 'ontology'},
+             {'constrained_columns': ['sample_id'],
+              'name': 'sample_to_ontology_ibfk_3',
+              'options': {'ondelete': 'CASCADE'},
+              'referred_columns': ['sample_id'],
+              'referred_schema': None,
+              'referred_table': 'sample'}]
+            sample_to_uproc
+            foreign keys for table sample_to_uproc:
+            [{'constrained_columns': ['sample_id'],
+              'name': 'sample_to_uproc_ibfk_1',
+              'options': {},
+              'referred_columns': ['sample_id'],
+              'referred_schema': None,
+              'referred_table': 'sample'},
+             {'constrained_columns': ['uproc_id'],
+              'name': 'sample_to_uproc_ibfk_2',
+              'options': {},
+              'referred_columns': ['uproc_id'],
+              'referred_schema': None,
+              'referred_table': 'uproc'}]
+        """
 
-    for table_name, table_code in table_name_to_table_code.items():
-        relationship_table_match = relationship_pattern.search(table_name)
-        if relationship_table_match:
-            print('table {} looks like a relationship table'.format(table_name))
-            table_a_name = relationship_table_match.group('table_a')
-            table_b_name = relationship_table_match.group('table_b')
-            if table_a_name not in table_name_to_table_code:
-                print('"{}" is not a table'.format(table_a_name))
-            elif table_b_name not in table_name_to_table_code:
-                print('"{}" is not a table'.format(table_b_name))
-            else:
-                print('found relationship table "{}"'.format(table_name))
+        #print(table.name)
+        #print('foreign keys for table {}:'.format(table.name))
+        #pprint.pprint(insp.get_foreign_keys(table.name))
+
+        # build one-to-one relationships
+
+        # build one-to-many relationships
+
+        # this is still a crappy way to detect many-to-many relationships
+        if len(foreign_key_constraints) == 0:
+            pass
+        elif len(foreign_key_constraints) == 1:
+            pass
+        elif len(foreign_key_constraints) == 2:
+            print('table {} has 2 foreign keys'.format(table.name))
+            # if there is a table called 'table_a_to_table_b' or
+            # 'table_b_to_table_a' then create a many-to-many relationship
+            table_a_name = foreign_key_constraints[0]['referred_table']
+            table_b_name = foreign_key_constraints[1]['referred_table']
+
+            association_table_name_ab = '{}_to_{}'.format(table_a_name, table_b_name)
+            association_table_name_ba = '{}_to_{}'.format(table_b_name, table_a_name)
+
+            if table.name == association_table_name_ab or table.name == association_table_name_ba:
+                print('  assume table "{}" represents a many-to-many relationship between tables "{}" and "{}"'.format(table.name, table_a_name, table_b_name))
                 table_a_code = table_name_to_table_code[table_a_name]
-                table_a_code.write(relationship_code.format(
-                    table_1=table_a_name,
-                    class_2=table_b_name.capitalize(),
-                    relationship_table=table_name,
-                    table_2=table_b_name)
-                )
+                table_a_code.write(
+                    relationship_code.format(
+                        table_1=table_a_name,
+                        class_2=table_b_name.capitalize(),
+                        relationship_table=table.name,
+                        table_2=table_b_name))
+
                 table_b_code = table_name_to_table_code[table_b_name]
-                table_b_code.write(relationship_code.format(
-                    table_1=table_b_name,
-                    class_2=table_a_name.capitalize(),
-                    relationship_table=table_name,
-                    table_2=table_a_name)
-                )
+                table_b_code.write(
+                    relationship_code.format(
+                        table_1=table_b_name,
+                        class_2=table_a_name.capitalize(),
+                        relationship_table=table.name,
+                        table_2=table_a_name))
+            else:
+                print('  assume table "{}" DOES NOT represent a many-to-many relationship between tables "{}" and "{}"'.format(table.name, table_a_name, table_b_name))
+
         else:
             pass
 
@@ -186,6 +226,7 @@ def write_models(output_fp):
         ##flask: test_models.write("from app import db\n\n")
         for _, table_code in sorted(table_name_to_table_code.items()):
             test_models.write(table_code.getvalue())
+            test_models.write('\n')
 
 
 if __name__ == '__main__':
