@@ -32,6 +32,15 @@ class ModelWriter():
     def get_model_parent_class_name(self):
         return 'Model'
 
+    def import_model_base(self):
+        return """\
+import sqlalchemy as sa
+from sqlalchemy.ext.declarative import declarative_base
+
+Model = declarative_base()
+
+"""
+
     def get_additional_imports(self):
         return ''
 
@@ -264,12 +273,8 @@ class ModelWriter():
 
 
         with open(output_fp, 'wt') as test_models:
-            test_models.write('import sqlalchemy as sa\n')
-            test_models.write('from sqlalchemy.ext.declarative import declarative_base\n')
-            test_models.write('\n')
-
-            test_models.write('Model = declarative_base()\n')
-            test_models.write('\n')
+            test_models.write(self.import_model_base())
+            test_models.write(self.get_additional_imports())
 
             test_models.write(self.get_additional_imports())
             ##flask: test_models.write("from app import db\n\n")
