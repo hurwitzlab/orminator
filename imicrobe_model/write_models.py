@@ -35,6 +35,9 @@ class ModelWriter():
     def get_additional_imports(self):
         return ''
 
+    def write_json_method(self):
+        return False
+
     def find_fk_constraint_by_column_name(self, column_names, fk_constraints):
         """
         Given a list of column names and a list of foreign key constaint
@@ -60,9 +63,6 @@ class ModelWriter():
             found_fk_contraints.append(found_fk_contraint)
 
         return tuple(found_fk_contraints)
-
-    def write_json_method(self):
-        return False
 
     def get_many_to_many_relations(self, table):
         insp = sa.engine.reflection.Inspector.from_engine(self.engine)
@@ -210,7 +210,6 @@ class ModelWriter():
 
             table_code.write("\n")
 
-            # TODO: make json method optional
             if self.write_json_method():
                 table_code.write("    def json(self):\n        return {\n")
                 for column in table.columns:
@@ -236,13 +235,13 @@ class ModelWriter():
 
         # add relationships
         relationship_code = """\
-        {table_2}_list = sa.orm.relationship(
-            "{class_2}",
-            secondary="{relationship_table}",
-            back_populates="{table_1}_list"
-        )
+    {table_2}_list = sa.orm.relationship(
+        "{class_2}",
+        secondary="{relationship_table}",
+        back_populates="{table_1}_list"
+    )
 
-    """
+"""
         for table in self.meta.sorted_tables:
             for (table_a, table_b) in self.get_many_to_many_relations(table):
                 print('  assume table "{}" represents a many-to-many relationship between tables "{}" and "{}"'.format(table.name, table_a.name, table_b.name))
