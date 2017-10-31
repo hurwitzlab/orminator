@@ -87,43 +87,95 @@ Model = declarative_base()
     def write_additional_methods(self, table, table_code):
         return
 
+    """
+    foreign_key_constraints looks like this:
+        foreign keys for table sample_to_ontology:
+        [{'constrained_columns': ['ontology_id'],
+          'name': 'sample_to_ontology_ibfk_2',
+          'options': {},
+          'referred_columns': ['ontology_id'],
+          'referred_schema': None,
+          'referred_table': 'ontology'},
+         {'constrained_columns': ['sample_id'],
+          'name': 'sample_to_ontology_ibfk_3',
+          'options': {'ondelete': 'CASCADE'},
+          'referred_columns': ['sample_id'],
+          'referred_schema': None,
+          'referred_table': 'sample'}]
+        sample_to_uproc
+        foreign keys for table sample_to_uproc:
+        [{'constrained_columns': ['sample_id'],
+          'name': 'sample_to_uproc_ibfk_1',
+          'options': {},
+          'referred_columns': ['sample_id'],
+          'referred_schema': None,
+          'referred_table': 'sample'},
+         {'constrained_columns': ['uproc_id'],
+          'name': 'sample_to_uproc_ibfk_2',
+          'options': {},
+          'referred_columns': ['uproc_id'],
+          'referred_schema': None,
+          'referred_table': 'uproc'}]
+    """
+    _association_table_re = re.compile(r'(?P<left_table>.+)_to_(?P<right_table>.+)')
+    def get_relations(self, table):
+        insp = sa.engine.reflection.Inspector.from_engine(self.engine)
+
+        # if 'table' has a foreign key to a 'table_x' and 'table_x'
+        # does not have a foreign key to 'table' then there is a
+        # one-to-many relationship between 'table_x' and 'table'
+        one_to_many_relations = []
+
+        # TODO: find a better way to identify many-to-many relations
+        # if 'table' has 2 foreign keys
+        # and has the right name then represents a many-to-many relation
+        many_to_many_relations = set()
+
+        for fk_constraint in insp.get_foreign_keys(table.name):
+            referred_table = self.meta.tables[fk_constraint['referred_table']]
+            referred_table_fk_constraints = insp.get_foreign_keys(referred_table.name)
+            referred_table_references_to_table = [
+                r_
+                for r_
+                in referred_table_fk_constraints
+                if r_['referred_table'] == table.name]
+
+            if len(referred_table_references_to_table) > 0:
+                # 'referred_table' also references 'table'
+                # is this a relation?
+                print('table "{}" and table "{}" reference each other'.format(
+                    table.name, referred_table.name))
+            else:
+                # 'table' references 'referred_table' but 'referred_table' does
+                # not reference 'table'
+
+                # is 'table' a many-to-many association table?
+                # if so it should have a name like referred_table_to_another_table
+                # or another_table_to_referred_table
+                association_table_name_match = self._association_table_re.search(table.name)
+                if association_table_name_match:
+                    print('table "{}" seems to be a many-to-many relation table'.format(
+                        table.name))
+                    left_table = self.meta.tables[association_table_name_match.group('left_table')]
+                    right_table = self.meta.tables[association_table_name_match.group('right_table')]
+                    many_to_many_relations.add((left_table, right_table))
+                else:
+                    # this looks like a one-to-many relation
+                    one_to_many_relations.append({
+                        'one': referred_table,
+                        'many': table,
+                        'fk_constraint': fk_constraint})
+        return one_to_many_relations, many_to_many_relations
+
     def get_many_to_many_relations(self, table):
         insp = sa.engine.reflection.Inspector.from_engine(self.engine)
         foreign_key_constraints = insp.get_foreign_keys(table.name)
-        """
-        foreign_key_constraints looks like this:
-            foreign keys for table sample_to_ontology:
-            [{'constrained_columns': ['ontology_id'],
-              'name': 'sample_to_ontology_ibfk_2',
-              'options': {},
-              'referred_columns': ['ontology_id'],
-              'referred_schema': None,
-              'referred_table': 'ontology'},
-             {'constrained_columns': ['sample_id'],
-              'name': 'sample_to_ontology_ibfk_3',
-              'options': {'ondelete': 'CASCADE'},
-              'referred_columns': ['sample_id'],
-              'referred_schema': None,
-              'referred_table': 'sample'}]
-            sample_to_uproc
-            foreign keys for table sample_to_uproc:
-            [{'constrained_columns': ['sample_id'],
-              'name': 'sample_to_uproc_ibfk_1',
-              'options': {},
-              'referred_columns': ['sample_id'],
-              'referred_schema': None,
-              'referred_table': 'sample'},
-             {'constrained_columns': ['uproc_id'],
-              'name': 'sample_to_uproc_ibfk_2',
-              'options': {},
-              'referred_columns': ['uproc_id'],
-              'referred_schema': None,
-              'referred_table': 'uproc'}]
-        """
         #pprint.pprint(foreign_key_constraints)
         many_to_many_relations = []
         # TODO: find a better way to identify an association table
-        # if this table has exactly 2 foreign keys then it is an association table
+        # if this table has exactly 2 foreign keys
+        # and
+        # has the right name then it is an association table
         if len(foreign_key_constraints) != 2:
             pass
         else:
@@ -161,7 +213,7 @@ Model = declarative_base()
 
             table_code.write("    __tablename__ = '{}'\n\n".format(table.name))
 
-            # handle foreign keys with explicit ForeignKeyConstraints
+            # write foreign key constraints using explicit ForeignKeyConstraints
             foreign_key_constraints = [
                     "        sa.ForeignKeyConstraint([{}], [{}])".format(
                         ','.join( ["'{}'".format(c_) for c_ in fk_constraint['constrained_columns']] ),
@@ -205,25 +257,59 @@ Model = declarative_base()
 
             table_code.write("\n")
 
-        # add relationships
+        # code for one-to-many relations
+        one_side_one_to_many_relation_code_template = """\
+    {many_table}_list = sa.orm.relationship(
+        "{many_class}",
+        back_populates="{one_table}")
+
+"""
+        many_side_one_to_many_relation_code_template = """\
+    {one_table} = sa.orm.relationship(
+        "{one_class}",
+        back_populates="{many_table}_list")
+
+"""
+
+        # code for many-to-many relations
         relationship_code = """\
     {table_2}_list = sa.orm.relationship(
         "{class_2}",
-        secondary="{relationship_table}",
-        back_populates="{table_1}_list"
-    )
+        secondary="{relation_table}",
+        back_populates="{table_1}_list")
 
 """
         for table in self.meta.sorted_tables:
-            for (table_a, table_b) in self.get_many_to_many_relations(table):
-                print('  assume table "{}" represents a many-to-many relationship between tables "{}" and "{}"'.format(table.name, table_a.name, table_b.name))
+            one_to_many_relations, many_to_many_relations = self.get_relations(table)
+            for one_to_many_relation in one_to_many_relations:
+                table_one = one_to_many_relation['one']
+                table_many = one_to_many_relation['many']
+                print('  table "{}" has a one-to-many relationship with table "{}"'.format(
+                    table_one, table_many))
 
+                table_one_code = table_to_table_code[table_one]
+                table_one_code.write(
+                    one_side_one_to_many_relation_code_template.format(
+                        many_table=table_many.name,
+                        many_class=table_many.name.capitalize(),
+                        one_table=table_one.name))
+
+                table_many_code = table_to_table_code[table_many]
+                table_many_code.write(
+                    many_side_one_to_many_relation_code_template.format(
+                        one_table=table_one,
+                        one_class=table_one.name.capitalize(),
+                        many_table=table_many.name))
+
+            for (table_a, table_b) in many_to_many_relations:
+                print('  writing code for many-to-many relation between tables "{}" and "{}"'.format(
+                    table_a, table_b))
                 table_a_code = table_to_table_code[table_a]
                 table_a_code.write(
                     relationship_code.format(
                         table_1=table_a.name,
                         class_2=table_b.name.capitalize(),
-                        relationship_table=table.name,
+                        relation_table=table.name,
                         table_2=table_b.name))
 
                 table_b_code = table_to_table_code[table_b]
@@ -231,9 +317,8 @@ Model = declarative_base()
                     relationship_code.format(
                         table_1=table_b.name,
                         class_2=table_a.name.capitalize(),
-                        relationship_table=table.name,
+                        relation_table=table.name,
                         table_2=table_a.name))
-
 
         for table, table_code in table_to_table_code.items():
             self.write_additional_methods(table, table_code)
