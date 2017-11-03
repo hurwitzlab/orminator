@@ -65,6 +65,7 @@ Model = declarative_base()
         re.compile(r'DATE'): r'sa.Date',
         re.compile(r'DATETIME'): r'sa.DateTime',
         re.compile(r'DOUBLE'): r'sa.Float',
+        re.compile(r'DOUBLE UNSIGNED'): r'sa.Float',
         re.compile(r'ENUM\((.+)\)'): r'mysql.ENUM(\1)',
         re.compile(r'INTEGER\(\d+\)'): r'mysql.INTEGER()',
         re.compile(r'INTEGER\(\d+\) UNSIGNED'): r'mysql.INTEGER(unsigned=True)',
