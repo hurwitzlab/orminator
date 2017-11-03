@@ -30,9 +30,6 @@ class ModelWriter():
         self.meta = sa.MetaData()
         self.meta.reflect(bind=self.engine)
 
-    def get_model_parent_class_name(self):
-        return 'Model'
-
     def import_model_base(self):
         return """\
 import sqlalchemy as sa
@@ -43,11 +40,15 @@ Model = declarative_base()
 
 """
 
+    def get_model_parent_class_name(self):
+        return 'Model'
+
     def get_additional_imports(self):
         return ''
 
     name_translations = {
-        re.compile(r'class'): 'class_'
+        re.compile(r'class'): 'class_',
+        re.compile(r'type'): 'type_'
     }
 
     def translate_column_name_to_py(self, column_name):
@@ -167,35 +168,11 @@ Model = declarative_base()
                         'fk_constraint': fk_constraint})
         return one_to_many_relations, many_to_many_relations
 
-    def get_many_to_many_relations(self, table):
-        insp = sa.engine.reflection.Inspector.from_engine(self.engine)
-        foreign_key_constraints = insp.get_foreign_keys(table.name)
-        #pprint.pprint(foreign_key_constraints)
-        many_to_many_relations = []
-        # TODO: find a better way to identify an association table
-        # if this table has exactly 2 foreign keys
-        # and
-        # has the right name then it is an association table
-        if len(foreign_key_constraints) != 2:
-            pass
-        else:
-            table_0 = self.meta.tables[foreign_key_constraints[0]['referred_table']]
-            table_1 = self.meta.tables[foreign_key_constraints[1]['referred_table']]
-
-            table_0_to_table_1 = '{}_to_{}'.format(table_0.name, table_1.name)
-            table_1_to_table_0 = '{}_to_{}'.format(table_1.name, table_0.name)
-            if table.name == table_0_to_table_1 or table.name == table_1_to_table_0:
-                many_to_many_relations.append((table_0, table_1))
-            else:
-                pass
-
-        return tuple(many_to_many_relations)
-
     def write_models(self, output_fp):
         # print(meta.tables)
 
         # build a dictionary of table_name to io.StringIO
-        # so we can go back to add relationships
+        # so we can edit the classes repeatedly before writing them to a file
         def string_io_factory():
             return io.StringIO()
         table_to_table_code = collections.defaultdict(string_io_factory)
