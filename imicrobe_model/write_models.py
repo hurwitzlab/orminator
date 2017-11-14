@@ -71,10 +71,11 @@ Model = declarative_base()
         re.compile(r'INTEGER\(\d+\) UNSIGNED'): r'mysql.INTEGER(unsigned=True)',
         re.compile(r'LONGTEXT'): r'mysql.LONGTEXT()',
         re.compile(r'MEDIUMTEXT'): r'mysql.MEDIUMTEXT()',
-        re.compile(r'TEXT'): r'mysql.TEXT()',
+        re.compile(r'TEXT'): r'sa.Text',
+        re.compile(r'TIME'): r'sa.Time',
         re.compile(r'TIMESTAMP'): r'mysql.TIMESTAMP',
         re.compile(r'TINYINT\((\d+)\)'): r'mysql.TINYINT(\1)',
-        re.compile(r'VARCHAR\((\d+)\)'): r'mysql.VARCHAR(\1)'
+        re.compile(r'VARCHAR\((\d+)\)'): r'sa.String(length=\1)'
     }
 
     def translate_column_type_to_sa(self, column_type):
