@@ -67,6 +67,7 @@ Model = declarative_base()
         re.compile(r'DOUBLE'): r'sa.Float',
         re.compile(r'DOUBLE UNSIGNED'): r'sa.Float',
         re.compile(r'ENUM\((.+)\)'): r'mysql.ENUM(\1)',
+        re.compile(r'FLOAT'): r'sa.Float',
         re.compile(r'INTEGER\(\d+\)'): r'mysql.INTEGER()',
         re.compile(r'INTEGER\(\d+\) UNSIGNED'): r'mysql.INTEGER(unsigned=True)',
         re.compile(r'LONGTEXT'): r'mysql.LONGTEXT()',
