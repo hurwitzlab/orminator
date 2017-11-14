@@ -21,10 +21,10 @@ def main():
     ModelWriter().write_models(output_fp=args.output_fp)
 
 class ModelWriter():
-    def __init__(self):
+    def __init__(self, db_uri):
         # connect to database on server
         # e.g. mysql+pymysql://imicrobe:<password>@localhost/imicrobe
-        db_uri = os.environ.get('IMICROBE_DB_URI')
+        ##db_uri = os.environ.get('IMICROBE_DB_URI')
         self.engine = sa.create_engine(db_uri)
         # reflect tables
         self.meta = sa.MetaData()
