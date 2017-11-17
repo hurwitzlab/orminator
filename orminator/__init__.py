@@ -32,7 +32,8 @@ Model = declarative_base()
 
     name_translations = {
         re.compile(r'class'): 'class_',
-        re.compile(r'type'): 'type_'
+        re.compile(r'type'): 'type_',
+        re.compile(r'file'): 'file_'
     }
 
     def translate_column_name_to_py(self, column_name):
