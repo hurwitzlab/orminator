@@ -1,8 +1,23 @@
-import collections
+from collections import defaultdict
+from contextlib import contextmanager
 import io
 import re
 
 import sqlalchemy as sa
+
+
+@contextmanager
+def session_manager(session_class):
+    """Provide a transactional scope around a series of operations."""
+    session = session_class()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 class ModelWriter():
@@ -19,6 +34,7 @@ class ModelWriter():
 import sqlalchemy as sa
 import sqlalchemy.dialects.mysql as mysql
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import backref
 
 Model = declarative_base()
 
@@ -163,7 +179,7 @@ Model = declarative_base()
         # so we can edit the classes repeatedly before writing them to a file
         def string_io_factory():
             return io.StringIO()
-        table_to_table_code = collections.defaultdict(string_io_factory)
+        table_to_table_code = defaultdict(string_io_factory)
 
         insp = sa.engine.reflection.Inspector.from_engine(self.engine)
         for table in self.meta.sorted_tables:
@@ -179,12 +195,17 @@ Model = declarative_base()
             table_code.write("    __tablename__ = '{}'\n\n".format(table.name))
 
             # write foreign key constraints using explicit ForeignKeyConstraints
-            foreign_key_constraints = [
-                    "        sa.ForeignKeyConstraint([{}], [{}])".format(
-                        ','.join( ["'{}'".format(c_) for c_ in fk_constraint['constrained_columns']] ),
-                        ','.join( ["'{}.{}'".format(fk_constraint['referred_table'], r_) for r_ in fk_constraint['referred_columns']] ))
-                    for fk_constraint
-                    in insp.get_foreign_keys(table_name=table.name)]
+            foreign_key_constraints = []
+            for fk_constraint in insp.get_foreign_keys(table_name=table.name):
+                constrained_columns_code = ','.join(["'{}'".format(c) for c in fk_constraint['constrained_columns']])
+                referred_columns_code = ','.join(["'{}.{}'".format(fk_constraint['referred_table'], r) for r in fk_constraint['referred_columns']])
+
+                all_arguments = ['[{}]'.format(constrained_columns_code), '[{}]'.format(referred_columns_code)]
+                for option, value in fk_constraint['options'].items():
+                    all_arguments.append("{}='{}'".format(option, value))
+
+                foreign_key_constraints.append("        sa.ForeignKeyConstraint({})".format(','.join(all_arguments)))
+
             if len(foreign_key_constraints) == 0:
                 pass
             else:
@@ -226,16 +247,26 @@ Model = declarative_base()
         one_side_one_to_many_relation_code_template = """\
     {many_table}_list = sa.orm.relationship(
         "{many_class}",
-        back_populates="{one_table}")
+        backref="{one_table}",
+        cascade="all, delete-orphan",
+        passive_deletes=True)
+        #back_populates="{one_table}")
 
 """
+        many_side_one_to_many_relation_cascade_delete_code_template = """\
+    #{one_table} = sa.orm.relationship(
+        #"{one_class}")
+        #backref=backref("{many_table}", passive_deletes=True))
+        #back_populates="{many_table}_list")
+
+"""
+
         many_side_one_to_many_relation_code_template = """\
-    {one_table} = sa.orm.relationship(
-        "{one_class}",
-        back_populates="{many_table}_list")
+    #{one_table} = sa.orm.relationship(
+        #"{one_class}",
+        #back_populates="{many_table}_list")
 
 """
-
         # code for many-to-many relations
         relationship_code = """\
     {table_2}_list = sa.orm.relationship(
@@ -244,11 +275,42 @@ Model = declarative_base()
         back_populates="{table_1}_list")
 
 """
+        insp = sa.engine.reflection.Inspector.from_engine(self.engine)
         for table in self.meta.sorted_tables:
             one_to_many_relations, many_to_many_relations = self.get_relations(table)
             for one_to_many_relation in one_to_many_relations:
                 table_one = one_to_many_relation['one']
                 table_many = one_to_many_relation['many']
+
+                # find the fk constraint on the many table referring to the one table
+                print('looking for fk constraint on table {}'.format(table_many.name))
+                table_many_fk_constraints = insp.get_foreign_keys(table_name=table_many.name)
+                many_to_one_fk_constraint = None
+                print('looking for foreign key constraint from table_many:"{}" to table_one:"{}"'.format(table_many, table_one))
+                for table_many_fk_constraint in table_many_fk_constraints:
+                    print(table_many_fk_constraint)
+                    if table_one.name in table_many_fk_constraint['referred_table']:
+                        many_to_one_fk_constraint = table_many_fk_constraint
+                        print('found foreign key constraint {}'.format(table_many_fk_constraint))
+                        break
+                # did we find it?
+                if many_to_one_fk_constraint is None:
+                    raise Exception('dammit!')
+                elif 'ondelete' in many_to_one_fk_constraint['options']:
+                    table_many_code = table_to_table_code[table_many]
+                    table_many_code.write(
+                        many_side_one_to_many_relation_cascade_delete_code_template.format(
+                            one_table=table_one,
+                            one_class=table_one.name.capitalize(),
+                            many_table=table_many.name))
+                else:
+                    table_many_code = table_to_table_code[table_many]
+                    table_many_code.write(
+                        many_side_one_to_many_relation_code_template.format(
+                            one_table=table_one,
+                            one_class=table_one.name.capitalize(),
+                            many_table=table_many.name))
+
                 print('  table "{}" has a one-to-many relationship with table "{}"'.format(
                     table_one, table_many))
 
@@ -259,12 +321,12 @@ Model = declarative_base()
                         many_class=table_many.name.capitalize(),
                         one_table=table_one.name))
 
-                table_many_code = table_to_table_code[table_many]
-                table_many_code.write(
-                    many_side_one_to_many_relation_code_template.format(
-                        one_table=table_one,
-                        one_class=table_one.name.capitalize(),
-                        many_table=table_many.name))
+                #table_many_code = table_to_table_code[table_many]
+                #table_many_code.write(
+                #    many_side_one_to_many_relation_code_template.format(
+                #        one_table=table_one,
+                #        one_class=table_one.name.capitalize(),
+                #        many_table=table_many.name))
 
             for (table_a, table_b) in many_to_many_relations:
                 print('  writing code for many-to-many relation between tables "{}" and "{}"'.format(
