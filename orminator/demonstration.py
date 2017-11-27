@@ -2,6 +2,7 @@ import os
 
 import sqlalchemy as sa
 
+from orminator import session_manager
 import orminator.models as models
 
 
@@ -14,16 +15,27 @@ def main():
     # Session is a class
     Session = sa.orm.sessionmaker(bind=engine)
 
-    session = Session()
+    with session_manager(Session) as session:
+        projects = session.query(models.Project).all()
+        for project in projects:
+            print('\n\n')
+            print('Project         : {}'.format(project.project_name))
+            print('id              : {}'.format(project.project_id))
+            print('investigator(s) :\n\t{}'.format('\n\t'.join([
+                investigator.investigator_name for investigator in project.investigator_list])))
+            break
 
-    projects = session.query(models.Project).all()
-    for project in projects:
-        print('\n\n')
-        print('Project         : {}'.format(project.project_name))
-        print('id              : {}'.format(project.project_id))
-        print('investigator(s) :\n\t{}'.format('\n\t'.join([
-            investigator.investigator_name for investigator in project.investigator_list
-        ])))
+    with session_manager(Session) as session:
+        sample = models.Sample(file_='/this/is/a/test/sample')
+        sample_attr = models.Sample_attr(value='this is a test attribute')
+        sample.sample_attr_list.append(sample_attr)
+
+        session.add(sample)
+
+    with session_manager(Session) as session:
+        test_sample = session.query(models.Sample).filter(models.Sample.file_ == '/this/is/a/test/sample').one()
+        session.delete()
+
 
 
 if __name__ == '__main__':
