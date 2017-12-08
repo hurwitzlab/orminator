@@ -1,9 +1,28 @@
 from collections import defaultdict
 from contextlib import contextmanager
 import io
+import os
 import re
 
+from sqlalchemy.orm import sessionmaker
 import sqlalchemy as sa
+
+
+@contextmanager
+def session_manager_from_db_uri(db_uri, echo=False):
+    """Provide a transactional scope around a series of operations."""
+    # connect to database on server
+    # e.g. mysql+pymysql://imicrobe:<password>@localhost/muscope2
+    session_class = sessionmaker(bind=sa.create_engine(db_uri, echo=echo))
+    session = session_class()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 @contextmanager
