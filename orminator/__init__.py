@@ -126,8 +126,8 @@ Model = declarative_base()
           'referred_columns': ['sample_id'],
           'referred_schema': None,
           'referred_table': 'sample'}]
-        sample_to_uproc
-        foreign keys for table sample_to_uproc:
+    sample_to_uproc
+    foreign keys for table sample_to_uproc:
         [{'constrained_columns': ['sample_id'],
           'name': 'sample_to_uproc_ibfk_1',
           'options': {},
