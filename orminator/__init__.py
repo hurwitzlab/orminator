@@ -248,17 +248,26 @@ Model = declarative_base()
             table_code.write('\n')
 
             # handle the data columns including foreign key columns
-            for column in table.columns:
-                if column.primary_key:
+            pk_constraint = insp.get_pk_constraint(table.name)
+            print('pk_constraint for table {}:\n{}'.format(table.name, pk_constraint))
+            print('column_data for table {}:\n{}'.format(table.name, insp.get_columns(table.name)))
+            for column_data in insp.get_columns(table.name):
+                if column_data['name'] in pk_constraint['constrained_columns']:
                     pass
                 else:
                     table_code.write(
-                        "    {} = sa.Column('{}', {})  # column.type was '{}'\n".format(
-                            self.translate_column_name_to_py(column.name),
-                            column.name,
-                            self.translate_column_type_to_sa(str(column.type)),
-                            column.type))
-                    table_code.write('\n')
+                        "    {} = sa.Column('{}', {}".format(
+                            self.translate_column_name_to_py(column_data['name']),
+                            column_data['name'],
+                            self.translate_column_type_to_sa(str(column_data['type']))))
+                    # if this column has a default value add it to the sa.Column constructor
+                    if column_data['default'] is not None:
+                        # some default values are quoted but others are not
+                        if column_data['default'].startswith('\'') and column_data['default'].endswith('\''):
+                            table_code.write(", default={}".format(column_data['default']))
+                    else:
+                        table_code.write(", default='{}'".format(column_data['default']))
+                    table_code.write(")  # column.type was '{}'\n".format(column_data['type']))
 
             table_code.write("\n")
 
