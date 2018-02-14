@@ -261,12 +261,17 @@ Model = declarative_base()
                             column_data['name'],
                             self.translate_column_type_to_sa(str(column_data['type']))))
                     # if this column has a default value add it to the sa.Column constructor
-                    if column_data['default'] is not None:
+                    if column_data['default'] is None:
+                        pass
+                    elif type(column_data['default']) is str:
                         # some default values are quoted but others are not
                         if column_data['default'].startswith('\'') and column_data['default'].endswith('\''):
                             table_code.write(", default={}".format(column_data['default']))
+                        # maybe should not include defaults like this, which are database functions usually
+                        else:
+                            table_code.write(", default='{}'".format(column_data['default']))
                     else:
-                        table_code.write(", default='{}'".format(column_data['default']))
+                        table_code.write(", default={}".format(column_data['default']))
                     table_code.write(")  # column.type was '{}'\n".format(column_data['type']))
 
             table_code.write("\n")
